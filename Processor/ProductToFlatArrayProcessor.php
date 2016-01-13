@@ -2,9 +2,9 @@
 
 namespace Pim\Bundle\EnhancedConnectorBundle\Processor;
 
-
-use Akeneo\Bundle\BatchBundle\Item\ItemProcessorInterface;
-use Pim\Bundle\BaseConnectorBundle\Processor\ProductToFlatArrayProcessor as ProductToFlatArray;
+use Akeneo\Component\StorageUtils\Detacher\ObjectDetacherInterface;
+use Pim\Bundle\BaseConnectorBundle\Processor\ProductToFlatArrayProcessor as BaseProductToFlatArrayProcessor;
+use Pim\Bundle\CatalogBundle\Builder\ProductBuilderInterface;
 use Pim\Bundle\CatalogBundle\Doctrine\ORM\Repository\AssociationTypeRepository;
 use Pim\Bundle\CatalogBundle\Doctrine\ORM\Repository\AttributeGroupRepository;
 use Pim\Bundle\CatalogBundle\Manager\ChannelManager;
@@ -13,15 +13,20 @@ use Pim\Bundle\CatalogBundle\Model\ProductValueInterface;
 use Symfony\Component\Serializer\Serializer;
 
 /**
- * Class ProductToFlatArrayProcessor
+ * Overrides original product processor to detach product once processed.
+ * Added the ability to exclude attributes and association types from the export.
  *
- * @author  Synolia
- * @package Pim\Bundle\EnhancedConnectorBundle\Processor
+ * @author    Damien Carcel <damien.carcel@akeneo.com>
+ * @copyright 2015 Akeneo SAS (http://www.akeneo.com)
+ * @license   http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
-class ProductToFlatArrayProcessor extends ProductToFlatArray implements ItemProcessorInterface
+class ProductToFlatArrayProcessor extends BaseProductToFlatArrayProcessor
 {
     /** @var array */
     protected $attributesToExclude;
+
+    /** @var ObjectDetacherInterface */
+    protected $objectDetacher;
 
     /** @var  array */
     protected $associationTypesToExclude;
@@ -33,21 +38,26 @@ class ProductToFlatArrayProcessor extends ProductToFlatArray implements ItemProc
     protected $associationTypeRepository;
 
     /**
-     * @param Serializer $serializer
-     * @param ChannelManager $channelManager
-     * @param AttributeGroupRepository $attributeGroupRepository
-     * @param AssociationTypeRepository $associationTypeRepository
-     * @param string[] $mediaAttributeTypes
+     * @param Serializer                   $serializer
+     * @param ChannelManager               $channelManager
+     * @param array                        $mediaAttributeTypes
+     * @param ProductBuilderInterface|null $productBuilder
+     * @param ObjectDetacherInterface|null $objectDetacher
+     * @param AttributeGroupRepository     $attributeGroupRepository
+     * @param AssociationTypeRepository    $associationTypeRepository
      */
     public function __construct(
         Serializer $serializer,
         ChannelManager $channelManager,
+        array $mediaAttributeTypes,
+        ProductBuilderInterface $productBuilder = null,
+        ObjectDetacherInterface $objectDetacher = null,
         AttributeGroupRepository $attributeGroupRepository,
-        AssociationTypeRepository $associationTypeRepository,
-        array $mediaAttributeTypes
+        AssociationTypeRepository $associationTypeRepository
     ) {
-        parent::__construct($serializer, $channelManager, $mediaAttributeTypes);
+        parent::__construct($serializer, $channelManager, $mediaAttributeTypes, $productBuilder);
 
+        $this->objectDetacher            = $objectDetacher;
         $this->attributeGroupRepository  = $attributeGroupRepository;
         $this->associationTypeRepository = $associationTypeRepository;
     }
@@ -60,6 +70,8 @@ class ProductToFlatArrayProcessor extends ProductToFlatArray implements ItemProc
         $data = parent::process($product);
 
         $data['product'] = $this->filterValues($data['product']);
+
+        $this->objectDetacher->detach($product);
 
         return $data;
     }
